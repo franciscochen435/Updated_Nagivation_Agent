@@ -493,33 +493,39 @@ class CampusEnv(gym.Env):
         self.current_state["time"] = self.time
         self.current_state["position"] = new_position
 
-        crowd_penalty = 0
-        if (new_position in self.current_state['crowd_positions'] and self.layer == 0):
-            crowd_penalty += self.rewards.get("crowd",-10)
-        
-        if (self.weather != "clear" and self.layer == 0):
-            if cell_value in BUILDINGS.values():
-                return "Avoid bad Weather", 0
-            elif (self.weather == "rain"):
-                return "You got wet", self.rewards.get("rain_penalty", -4) + crowd_penalty
-            elif (self.weather == "snow"):
-                return "You got snowed", self.rewards.get("snow_penalty", -5) + crowd_penalty
-        
-        if (self.weather != "clear" and self.layer == 1):
-            return "Avoid rain", 10
+        # Accumulate every applicable reward term instead of returning on the first match
+        reward = 0
+        messages = []
+        in_building = cell_value in BUILDINGS.values()
 
-        if (self.weather == "clear" and self.layer == 1):
-            return "Avoid bad movement in tunnel when weather is clear", self.rewards.get("bad_movement", -5) + crowd_penalty
+        # Crowd only exists on surface layer
+        if self.layer == 0 and new_position in self.current_state['crowd_positions']:
+            reward += self.rewards.get("crowd", -10)
+            messages.append("Walked into a crowd")
 
-        # Check if entered a wrong building (not goal building) - only on surface layer
-        if (self.current_state["layer"] == 0 and 
-            cell_value in BUILDINGS.values() and 
-            cell_value != self.goal_building_code):
-            return f"Entered wrong building at {new_position}", self.rewards.get("enter_wrong_building", -3) + crowd_penalty
-        
-        
-                
-        return f"Moved to {self.current_state['position']}", 0 + crowd_penalty
+        # Weather penalty only applies outdoors on the surface
+        if self.layer == 0 and self.weather != "clear":
+            if in_building:
+                messages.append("Avoid bad Weather")
+            elif self.weather == "rain":
+                reward += self.rewards.get("rain_penalty", -4)
+                messages.append("You got wet")
+            elif self.weather == "snow":
+                reward += self.rewards.get("snow_penalty", -5)
+                messages.append("You got snowed")
+
+        if self.layer == 1 and self.weather == "clear":
+            reward += self.rewards.get("bad_movement", -5)
+            messages.append("Avoid bad movement in tunnel when weather is clear")
+
+        # Entered a wrong building (not goal building) - only on surface layer
+        if self.layer == 0 and in_building and cell_value != self.goal_building_code:
+            reward += self.rewards.get("enter_wrong_building", -3)
+            messages.append(f"Entered wrong building at {new_position}")
+
+        if not messages:
+            messages.append(f"Moved to {new_position}")
+        return "; ".join(messages), reward
 
 
     def move_crowd_random(self):
