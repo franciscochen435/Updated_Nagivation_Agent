@@ -16,17 +16,20 @@ gui_flag = "gui" in sys.argv
 env = game
 
 def hash_obs(obs):
-    key = (
-        obs['position'][0],
-        obs['position'][1],
-        obs['weather'],
-        obs['layer'],
-        obs['can_toggle_layer'],
-        obs['nearest_crowd'][0],
-        obs['nearest_crowd'][1],
-    )
+    px, py = obs['position']
+    cx, cy = obs['nearest_crowd']
 
-    return key
+    # Nearest crowd relative to the agent, clipped to a 5x5 window
+    if (cx, cy) == (-1, -1):# tunnel layer / no crowd
+        crowd_rel = (-9, -9)
+    else:
+        dx, dy = cx - px, cy - py
+        if abs(dx) <= 2 and abs(dy) <= 2:
+            crowd_rel = (dx, dy)
+        else:
+            crowd_rel = (9, 9)# far away, treat as irrelevant
+
+    return (px, py, obs['weather'], obs['layer'], crowd_rel)
 
 def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
     Q_table = {}
