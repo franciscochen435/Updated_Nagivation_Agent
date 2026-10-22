@@ -1,124 +1,95 @@
 # Updated_Nagivation_Agent
 
-A tabular Q-learning agent that navigates a 20×20 grid map of the Northeastern University campus. The map has two layers: the **surface** and the **underground tunnels**. The agent must reach a goal building (Snell Library by default) as quickly as possible under varying weather and crowd conditions, learning to take the tunnels in rain or snow and to avoid crowds.
+A tabular Q-learning agent that navigates a 20×20 grid of the Northeastern campus, with a surface layer and an underground tunnel layer. It must reach Snell Library while weather (clear, rain, snow) and moving crowds change which route is best.
 
-## Contents
+This repo revisits an earlier group project. The goal of the update is to make the agent **actually learn weather-aware routes** and to **measure that properly**.
 
-- [Project Structure](#project-structure)
-- [Setup](#setup)
-- [Training and Evaluation](#training-and-evaluation)
-- [Environment](#environment)
-- [Main Changes](#main-changes)
+## What Changed
 
-## Project Structure
+**1. Reward function: removed exploits, made it consistent**
+- Removed the +10 per step reward for walking in the tunnel during bad weather. The agent could farm it by circling in the tunnel, which paid more than reaching the goal.
+- Replaced the one-off time bonus at the goal with a per-step time cost (−2 per time unit). The agent now feels every step, including `WAIT`.
+- Removed the ±300 toggle reward and the −800 timeout penalty. Both were far larger than every other term and dominated learning.
+- Rain / snow penalty per exposed step raised to −10 / −15, roughly "one step in the rain ≈ 5 extra time units".
 
-```
-.
-├── campus_env.py      # Gym environment: map, actions, time cost, reward function
-├── campus_gui.py      # pygame visualization
-├── Q_learning.py      # Q-learning training and evaluation script
-└── requirements.txt
-```
+**2. State: relative crowd position**
+- The nearest crowd was stored as absolute coordinates, so a crowd moving across the map created a brand-new state. It is now an offset clipped to a 5×5 window around the agent.
 
-## Setup
+**3. Training**
+- Optimistic Q initialization (1000), so the agent tries the multi-step "walk to entrance → enter tunnel" route.
+- 100k episodes instead of 30k, γ = 0.99 (was 0.9), ε decays to 0.05 by ~50k episodes, and learning rate floored at 0.1.
 
-Dependencies are pinned in `requirements.txt`. `numpy==1.24.3` only supports **Python 3.8–3.11**; it will not install on Python 3.12 or later.
+**4. Evaluation: a different standard**
+
+| | Original project | Now |
+|---|---|---|
+| Policy at evaluation | Softmax sampling | Greedy (same as training) |
+| Reference point | None | Shortest-time path (Dijkstra) from the **same start, layer and weather** |
+| Runs | 1 | 3 training seeds, reported as mean ± std |
+| Main metrics | Average reward, layer usage share | Reward vs. baseline, **steps exposed outdoors**, crowd contacts, time |
+
+## Results
+
+10,000 evaluation episodes per seed. Agent values are mean ± std over 3 seeds. The baseline takes the fastest route and ignores weather discomfort and crowds. Both reach the goal in 100% of episodes.
+
+| | Clear: agent | Clear: baseline | Rain: agent | Rain: baseline | Snow: agent | Snow: baseline |
+|---|---|---|---|---|---|---|
+| Total reward | 951.4 ± 5.4 | **978.4** | **942.6 ± 2.4** | 911.7 | **930.3 ± 1.7** | 899.1 |
+| Outdoor steps / episode | 2.82 | 4.52 | **1.89** | 4.33 | **1.91** | 3.78 |
+| Tunnel steps / episode | 2.02 | 0.26 | **3.82** | 0.40 | **3.91** | 0.81 |
+| Crowd contacts / episode | **0.126** | 0.220 | **0.095** | 0.214 | **0.108** | 0.196 |
+| Time to goal | 12.1 | **8.6** | 14.1 | **10.2** | 15.4 | **11.7** |
+
+- **Rain and snow:** the agent scores about 31 points more than the baseline and spends roughly half as many steps exposed outdoors. It does this by moving into the tunnel.
+- **Crowds:** in all three weather conditions, the agent has 43–56% fewer crowd contacts.
+- **Cost:** routes take 30–40% longer. In clear weather the agent scores below the baseline.
+
+**Where each step ends** (new metric). The "share of steps per layer" chart used previously hid this: it counted indoor and outdoor surface steps as the same thing.
+
+![Weather exposure](results/weather_exposure_comparison.png)
+
+**Penalty per episode** (1000 − total reward, lower is better):
+
+![Reward comparison](results/reward_comparison.png)
+
+**Tunnel usage, split by starting layer.** Half of all episodes start in the tunnel, which inflated tunnel usage in the original chart.
+
+![Layer usage](results/layer_usage_comparison.png)
+
+**Crowd contacts:**
+
+![Crowd contacts](results/crowd_contact_comparison.png)
+
+**Training curve (3 seeds):**
+
+![Training](results/training_plot.png)
+
+## Limitations
+
+- **Clear weather is worse than the baseline.** The agent takes detours through buildings and the tunnel that a shortest path does not need.
+- **Far from optimal.** A reward-optimal planner (Dijkstra on the same reward, crowds ignored) scores 959 in rain and 953 in snow. The agent captures about 60% of the possible improvement over the baseline. Episodes that start on the surface are the weakest, likely because the crowd window splits each surface cell into many rarely visited states.
+- **The comparison uses the agent's own reward.** The baseline does not try to avoid weather, so a larger weather penalty widens the gap automatically. In earlier runs with −4/−5 (before the training changes), the agent only tied the baseline in rain and fell behind in snow. The penalty is a preference setting, not a measured fact.
+- **Small, fixed setting.** One goal building, a 20×20 grid, randomly moving crowds, and a tabular Q-table that does not generalize across states.
+
+## Future Work
+
+- Add the reward-optimal planner to the evaluation script as an explicit upper bound.
+- Replace the Q-table with function approximation (e.g. DQN), so crowd configurations don't fragment the state space.
+- Make the goal part of the state, so a single agent can navigate to any building.
+- More realistic dynamics: slippery surfaces in snow, crowd hotspots by location and time of day.
+
+## Setup and Usage
+
+Requires Python 3.8–3.11 (`numpy==1.24.3` does not install on newer versions).
 
 ```bash
-git clone https://github.com/franciscochen435/Updated_Nagivation_Agent.git
-cd Updated_Nagivation_Agent
-
-# Create a virtual environment (Python 3.11 shown here)
-python3.11 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
 pip install -r requirements.txt
+python Q_learning.py train   # trains 3 seeds × 100k episodes, saves Q_table_*_seed{0,1,2}.pickle
+python Q_learning.py         # evaluates against the baseline, prints tables, saves charts
 ```
 
-## Training and Evaluation
-
-```bash
-# Train: writes Q_table_<num_episodes>_<decay_rate>.pickle and training plots
-python Q_learning.py train
-
-# Evaluate: loads the Q-table above, runs 10,000 episodes and writes summary plots
-python Q_learning.py
-
-# Evaluate with a pygame window to watch the agent
-python Q_learning.py gui
-```
-
-`num_episodes` and `decay_rate` are set in `Q_learning.py`. Evaluation builds the Q-table filename from these two values, so training and evaluation must use the same values.
-
-### Output Files
-
-| File | Produced by | Contents |
-|---|---|---|
-| `Q_table_*.pickle` | Training | The trained Q-table |
-| `training_plot_*.png` | Training | Total reward per episode and its running average |
-| `crowd_contact_ratio_over_episodes.png` | Training | Fraction of steps spent in a crowd, per episode |
-| `layer_usage_comparison.png` | Evaluation | Surface vs. tunnel usage under each weather condition |
-| `toggle_probability_comparison.png` | Evaluation | Probability of entering the tunnel when standing in a toggle building, per weather condition |
-| `average_time_comparison.png` | Evaluation | Average episode time per weather condition |
-
-## Environment
-
-### Actions (10)
-
-Eight movement directions (orthogonal moves cost 1.0, diagonal moves cost 1.414), `TOGGLE_LAYER` (switch between surface and tunnel inside a building with a tunnel entrance), and `WAIT`. Each move has a 1% chance of slipping into a random adjacent cell.
-
-### Time Cost
-
-Time consumed per step = action base time × cell type factor × weather factor × crowd factor.
-
-- **Cell type:** open ground 1.0, tunnel 1.5, building 2.0.
-- **Weather (outdoor surface only):** clear 1.0, rain 1.3, snow 1.6.
-- **Crowd:** low 1.0, medium 1.2, high 1.5.
-
-An episode is cut off when time reaches 400 or the step count reaches 1000.
-
-### Reward Function
-
-| Term | Value | When it applies |
-|---|---|---|
-| `goal` | +1000 | Reaching the goal building |
-| `time_cost` | −2 per time unit | Every step, based on the time actually consumed (moves, `TOGGLE_LAYER` and `WAIT`) |
-| `crowd` | −10 | Stepping into a crowded cell on the surface |
-| `rain_penalty` / `snow_penalty` | −4 / −5 | Moving outdoors on the surface in rain / snow |
-| `bad_movement` | −5 | Moving in the tunnel when the weather is clear |
-| `enter_wrong_building` | −3 | Entering a non-goal building on the surface |
-| `invalid_action` | −5 | Hitting a wall, going out of bounds, or `TOGGLE_LAYER` where no toggle is possible |
-| Layer switch | −50 | Leaving the tunnel for the surface in bad weather, or entering the tunnel in clear weather |
-| `timeout` | 0 | Time limit or step limit reached (delay is already penalized through `time_cost`) |
-
-### State Representation
-
-```python
-(x, y, weather, layer, crowd_rel)
-```
-
-`crowd_rel` is the offset `(dx, dy)` of the nearest crowd relative to the agent, kept only inside a 5×5 window. Crowds outside the window are encoded as `(9, 9)`; on the tunnel layer (where there are no crowds) it is `(-9, -9)`.
-
-## Main Changes
-
-### Reward Function (`campus_env.py`)
-
-- **Removed the +10 reward for every tunnel step.** In bad weather the agent could farm reward by walking back and forth in the tunnel, earning more than it would by reaching the goal, so it learned to loop instead of navigating. The preference for tunnels in bad weather now comes only from the weather penalty applied on the surface.
-- **`move_player` now accumulates reward terms instead of returning early.** Previously it returned on the first matching condition, so the crowd penalty and the wrong-building penalty were skipped in some cases. All applicable terms are now summed, and `info["result"]` joins multiple messages with `; `.
-- **Time reward is now charged per step.** Previously a one-off `(max_time - time) × 2` bonus was paid only on reaching the goal. Because time is not part of the state, that signal was very noisy for the agent, and episodes that never reached the goal learned nothing about being fast. Each step now costs `−2 × time consumed`, and the goal pays a fixed +1000. For episodes that reach the goal the return differs only by a constant 800, so the preference ordering is unchanged. This also fixes `WAIT` being free, which made standing still look attractive.
-- **Toggle reward reduced from ±300/350 to 0.** Those values were two orders of magnitude larger than the per-step rewards, so the agent was effectively optimizing for entering the tunnel rather than for reaching the goal. Only the −50 for switching in the wrong direction remains.
-- **Timeout penalty changed from −800 to 0.** Delay is already penalized by the per-step time cost (roughly −800 accumulated by the time limit), so the extra −800 double-counted it. And since the state has no time information, the penalty landed on whatever cell the agent happened to be in at the cutoff, corrupting that cell's Q-values.
-
-### Q-learning (`Q_learning.py`)
-
-- **State representation:** the nearest crowd is now encoded as a relative offset clipped to a 5×5 window instead of absolute coordinates, and the redundant `can_toggle_layer` was removed. Previously a distant crowd moving by one cell produced a brand-new state, pushing the state count into the hundreds of thousands; the crowd component now has at most 27 values.
-- **Hyperparameters:**
-
-  | Parameter | Before | After | Reason |
-  |---|---|---|---|
-  | `gamma` | 0.9 | 0.99 | 0.9^25 ≈ 0.07, so the goal reward barely reached distant start positions |
-  | `decay_rate` | 0.99999 | 0.99996 | ε was still about 0.37 at the end of training; it now reaches 0.05 around episode 75k |
-  | `min_epsilon` | none | 0.05 | Keeps a small amount of exploration |
-  | Learning rate | `1/(1+n)` | `max(0.1, 1/(1+n))` | `1/(1+n)` decays too fast; Q-learning targets keep changing, so early bad estimates were hard to correct |
-
-> Because the state format has changed, existing `Q_table_*.pickle` files are no longer compatible. Retrain before evaluating.
+| File | Contents |
+|---|---|
+| `campus_env.py` | Gym environment: map, time costs, reward function |
+| `Q_learning.py` | Training, shortest-path baseline, evaluation and charts |
+| `campus_gui.py` | pygame visualization (`python Q_learning.py gui`) |
