@@ -31,7 +31,7 @@ def hash_obs(obs):
 
     return (px, py, obs['weather'], obs['layer'], crowd_rel)
 
-def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
+def Q_learning(num_episodes=10000, gamma=0.99, epsilon=1, decay_rate=0.999, min_epsilon=0.05, min_eta=0.1):
     Q_table = {}
     num_updates = defaultdict(lambda: np.zeros(env.action_space.n))
     rewards = []
@@ -65,7 +65,8 @@ def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
             else:
                 action = env.action_space.sample()
             
-            eta = 1 / (1 + num_updates[state][action])
+            # Floor the learning rate so later (more accurate) targets still matter
+            eta = max(min_eta, 1 / (1 + num_updates[state][action]))
         
             obs, reward, done, info = env.step(action)
             total_reward +=reward
@@ -89,7 +90,7 @@ def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
         crowd_ratios.append(crowd_ratio)
         
         # decay epsilon after each episode    
-        epsilon *= decay_rate
+        epsilon = max(min_epsilon, epsilon * decay_rate)
         rewards.append((episode, total_reward))
         
     x, y = zip(*rewards)
@@ -138,14 +139,14 @@ def Q_learning(num_episodes=10000, gamma=0.9, epsilon=1, decay_rate=0.999):
 Specify number of episodes and decay rate for training and evaluation.
 """
 num_episodes = 100000
-decay_rate = 0.99999
+decay_rate = 0.99996  # epsilon reaches ~0.05 around episode 80k
 
 """
 Run training if train_flag is set; otherwise, run evaluation using saved Q-table.
 """
 if train_flag:
     Q_table = Q_learning(
-        num_episodes=num_episodes, gamma=0.9, epsilon=1, decay_rate=decay_rate
+        num_episodes=num_episodes, gamma=0.99, epsilon=1, decay_rate=decay_rate
     )  # Run Q-learning
 
     # Save the Q-table dict to a file
