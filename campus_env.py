@@ -172,13 +172,14 @@ class CampusEnv(gym.Env):
         self.rewards = {
             "goal": 1000,
             "invalid_action": -5,
-            "timeout": -800, 
+            "timeout": 0,  # time cost is already charged per step
             "enter_wrong_building": -3,
-            "toggle": 300,
+            "toggle": 0,
             "rain_penalty": -4,
             "snow_penalty": -5,
             "bad_movement": -5,
             "crowd": -10,
+            "time_cost": -2,  # per unit of time consumed
         }
 
         # Actions
@@ -628,7 +629,11 @@ class CampusEnv(gym.Env):
 
     def step(self, action: int):
         self.steps += 1
+        time_before = self.time
         result, reward = self.play_turn(action)
+
+        # Per-step time cost (covers moves, toggle and WAIT)
+        reward += (self.time - time_before) * self.rewards.get("time_cost", -2)
 
         # Move crowd every 3 step the agent move
         if (self.steps % 3 == 0):
@@ -639,7 +644,6 @@ class CampusEnv(gym.Env):
         done = False
         if terminal_status == "goal":
             reward += self.rewards.get("goal", 1000)
-            reward += (self.max_time - self.time) * 2
             done = True
         elif terminal_status == "truncated":
             reward += self.rewards.get("timeout", -800)
