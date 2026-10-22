@@ -34,7 +34,9 @@ def hash_obs(obs):
 
     return (px, py, obs['weather'], obs['layer'], crowd_rel)
 
-def Q_learning(num_episodes=10000, gamma=0.99, epsilon=1, decay_rate=0.999, min_epsilon=0.05, min_eta=0.1, seed=0):
+def Q_learning(num_episodes=10000, gamma=0.99, epsilon=1, decay_rate=0.999, min_epsilon=0.05, min_eta=0.1, initial_q=1000.0, seed=0):
+    # Optimistic initialization: untried actions look as good as the goal reward, so the
+    # agent keeps trying them (e.g. toggling into the tunnel) until experience says otherwise
     random.seed(seed)
     np.random.seed(seed)
 
@@ -62,7 +64,7 @@ def Q_learning(num_episodes=10000, gamma=0.99, epsilon=1, decay_rate=0.999, min_
             episode_steps += 1
 
             if state not in Q_table.keys():
-                Q_table[state] = np.zeros(env.action_space.n)
+                Q_table[state] = np.full(env.action_space.n, initial_q)
 
             current_prob = random.random()
             if current_prob > epsilon:
@@ -77,7 +79,7 @@ def Q_learning(num_episodes=10000, gamma=0.99, epsilon=1, decay_rate=0.999, min_
             total_reward +=reward
             state_next = hash_obs(obs)
             if state_next not in Q_table:
-                Q_table[state_next] = np.zeros(env.action_space.n)
+                Q_table[state_next] = np.full(env.action_space.n, initial_q)
 
             # Values for Q_table update
             Q_old = Q_table[state][action]
@@ -111,8 +113,8 @@ def moving_average(values, window=500):
 Specify number of episodes, decay rate and number of seeds for training and evaluation.
 Each seed trains an independent Q-table; evaluation reports mean ± std across seeds.
 """
-num_episodes = 30000
-decay_rate = 0.9998  # epsilon reaches ~0.05 around episode 15k
+num_episodes = 100000
+decay_rate = 0.99994  # epsilon reaches ~0.05 around episode 50k
 num_seeds = 3
 num_eval_episodes = 10000
 
