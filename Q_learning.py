@@ -138,7 +138,7 @@ def Q_learning(num_episodes=10000, gamma=0.99, epsilon=1, decay_rate=0.999, min_
 """
 Specify number of episodes and decay rate for training and evaluation.
 """
-num_episodes = 100000
+num_episodes = 30000
 decay_rate = 0.99996  # epsilon reaches ~0.05 around episode 80k
 
 """
