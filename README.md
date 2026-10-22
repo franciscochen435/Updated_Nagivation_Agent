@@ -2,7 +2,7 @@
 
 A tabular Q-learning agent that navigates a 20×20 grid of the Northeastern campus, with a surface layer and an underground tunnel layer. It must reach Snell Library while weather (clear, rain, snow) and moving crowds change which route is best.
 
-This repo revisits an earlier group project. The goal of the update is to make the agent **actually learn weather-aware routes** and to **measure that properly**.
+This repo revisits an earlier group project ([original repo](https://github.com/jack666Chen/CS4100_final_project)). The goal of the update is to make the agent **actually learn weather-aware routes** and to **measure that properly**.
 
 ## What Changed
 
