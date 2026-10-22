@@ -175,8 +175,8 @@ class CampusEnv(gym.Env):
             "timeout": 0,  # time cost is already charged per step
             "enter_wrong_building": -3,
             "toggle": 0,
-            "rain_penalty": -4,
-            "snow_penalty": -5,
+            "rain_penalty": -8,  # one exposed step ~ 4 extra time units at time_cost -2
+            "snow_penalty": -10,
             "bad_movement": -5,
             "crowd": -10,
             "time_cost": -2,  # per unit of time consumed
